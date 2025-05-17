@@ -1,0 +1,7 @@
+fastapi==0.115.12
+deepface==0.0.93
+uvicorn==0.34.2
+numpy==1.26.4
+scikit-learn==1.5.1
+tf_keras==2.19.0
+python-multipart==0.0.20
