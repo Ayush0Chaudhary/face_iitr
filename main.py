@@ -4,14 +4,16 @@ import numpy as np
 from fastapi import FastAPI, UploadFile, File, Form, HTTPException
 from fastapi.responses import JSONResponse
 from deepface import DeepFace
-from sklearn.metrics.pairwise import cosine_similarity
 from uuid import uuid4
 from fastapi.middleware.cors import CORSMiddleware
 import time
+import faiss
 
 app = FastAPI()
 os.makedirs("face_db", exist_ok=True)
 DB_FILE = "db.npy"
+FAISS_INDEX_PATH = "faiss.index"
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],  # Allow all origins
@@ -22,11 +24,28 @@ app.add_middleware(
 # Load or initialize database
 db_entries = np.load(DB_FILE, allow_pickle=True).tolist() if os.path.exists(DB_FILE) else []
 
+# Collect all embeddings first
+all_embeddings = np.array([entry["embedding"] for entry in db_entries], dtype=np.float32)
+embedding_dim = all_embeddings.shape[1]
+
+if not os.path.exists(FAISS_INDEX_PATH):
+    # Initialize FAISS index
+    index = faiss.IndexFlatIP(embedding_dim)
+    # Add ALL embeddings at once
+    index.add(all_embeddings)
+    faiss.write_index(index, FAISS_INDEX_PATH)
+else:
+    # Load existing FAISS index
+    index = faiss.read_index(FAISS_INDEX_PATH)
+
+
 @app.post("/register")
 async def register_face(
     userId: str = Form(...),
     file: UploadFile = File(...)
 ):
+    global index
+
     # Save image
     img_path = f"face_db/{uuid4().hex}_{file.filename}"
     with open(img_path, "wb") as buffer:
@@ -35,6 +54,15 @@ async def register_face(
     # Compute embedding
     try:
         embedding = DeepFace.represent(img_path=img_path, model_name='Facenet', enforce_detection=False)[0]["embedding"]
+        embedding_dim = len(embedding)
+        index = faiss.IndexFlatIP(embedding_dim)
+
+        # Add image embeddings (as numpy array)
+        index.add(embedding)
+
+        faiss.write_index(index, FAISS_INDEX_PATH)
+
+        print("Saved to FAISS Index")
     except Exception as e:
         os.remove(img_path)
         raise HTTPException(status_code=400, detail=f"Face embedding failed: {e}")
@@ -60,6 +88,7 @@ async def register_face(
 @app.post("/identify")
 async def identify_face(file: UploadFile = File(...)):
     # Load latest DB
+    global index
     start = time.time()
     if not os.path.exists(DB_FILE):
         raise HTTPException(status_code=400, detail="No face database available.")
@@ -76,7 +105,9 @@ async def identify_face(file: UploadFile = File(...)):
 
     # Get embedding
     try:
-        query_embedding = DeepFace.represent(img_path=img_path, model_name='Facenet', )[0]["embedding"]
+        query_embedding = np.array(DeepFace.represent(img_path=img_path, model_name='Facenet', )[0]["embedding"])
+        query_embedding = np.array(query_embedding).astype('float32').reshape(1, -1) # faiss needs float32
+
     except Exception as e:
         os.remove(img_path)
         raise HTTPException(status_code=400, detail=f"Face embedding failed: {e}")
@@ -84,16 +115,28 @@ async def identify_face(file: UploadFile = File(...)):
     os.remove(img_path)
 
     # Compute similarities
-    db_embeddings = [entry["embedding"] for entry in db_entries]
-    similarities = cosine_similarity([query_embedding], db_embeddings)[0]
-    top_idx = int(np.argmax(similarities))
+    similarities, top_idx = index.search(query_embedding, k=10) 
+    similarities = similarities[0]
+    top_idx = top_idx[0]
 
-    matched_entry = db_entries[top_idx].copy()
-    matched_entry.pop("embedding")  # Do not send raw embedding in response
-    matched_entry["confidence"] = float(similarities[top_idx])
+
+
+    matched_entries = []
+    for idx in list(top_idx):
+        entry = db_entries[idx].copy()
+        entry.pop("embedding") # Do not send raw embedding in response
+        truncated_idx = np.where(top_idx == idx)[0][0]
+        entry["confidence"] = float(similarities[truncated_idx]/100)
+        matched_entries.append(entry)
 
     end = time.time()
-    matched_entry["time_taken"] = end - start
+    result = {
+        "total_matches": len(matched_entries),
+        "total_entries": len(db_entries),
+        "time_taken": end - start,
+        "matches": matched_entries,
+    }
+
     print(f"Time taken for identification: {end - start:.2f} seconds")
 
-    return JSONResponse(matched_entry)
+    return JSONResponse(result)
