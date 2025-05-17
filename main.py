@@ -12,6 +12,7 @@ import time
 app = FastAPI()
 os.makedirs("face_db", exist_ok=True)
 DB_FILE = "db.npy"
+N_MATCHES = 10
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],  # Allow all origins
@@ -86,14 +87,23 @@ async def identify_face(file: UploadFile = File(...)):
     # Compute similarities
     db_embeddings = [entry["embedding"] for entry in db_entries]
     similarities = cosine_similarity([query_embedding], db_embeddings)[0]
-    top_idx = int(np.argmax(similarities))
+    top_idx = np.argsort(similarities)[::-1][:N_MATCHES] # Selects top 10 resuls
 
-    matched_entry = db_entries[top_idx].copy()
-    matched_entry.pop("embedding")  # Do not send raw embedding in response
-    matched_entry["confidence"] = float(similarities[top_idx])
+    matched_entries = []
+    for idx in top_idx:
+        entry = db_entries[idx].copy()
+        print(type(entry))
+        entry.pop("embedding") # Do not send raw embedding in response
+        entry["confidence"] = float(similarities[idx])
+        matched_entries.append(entry)
 
     end = time.time()
-    matched_entry["time_taken"] = end - start
+    result = {
+        "total_matches": len(matched_entries),
+        "total_entries": len(db_entries),
+        "time_taken": end - start,
+        "matches": matched_entries,
+    }
     print(f"Time taken for identification: {end - start:.2f} seconds")
 
-    return JSONResponse(matched_entry)
+    return JSONResponse(result)
