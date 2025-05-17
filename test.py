@@ -6,6 +6,6 @@ files = {
 }
 response = requests.post(url, files=files)
 
-print(f"Time taken for identufication is: {response.json()['time_taken']}")
+print(f"Time taken for identification is: {response.json()['time_taken']}")
 
 print(f"Result: {response.text}")
