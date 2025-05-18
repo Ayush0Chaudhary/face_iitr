@@ -22,6 +22,36 @@ app.add_middleware(
 # Load or initialize database
 db_entries = np.load(DB_FILE, allow_pickle=True).tolist() if os.path.exists(DB_FILE) else []
 
+from typing import List
+from fastapi import FastAPI
+from pydantic import BaseModel
+
+# Pydantic model for returning user info
+class UserOut(BaseModel):
+    enrolment_number: str
+    name: str
+    phone_number: str
+    email_id: str
+    bhawan: str
+    room_number: str
+    identification_key: str
+    display_picture_path: str
+
+@app.get("/users", response_model=List[UserOut])
+async def get_all_users():
+    if not os.path.exists(DB_FILE):
+        raise HTTPException(status_code=404, detail="User database not found.")
+
+    db_entries = np.load(DB_FILE, allow_pickle=True).tolist()
+    users = []
+    print(f"Number of users in DB: {len(db_entries)}")
+    for entry in db_entries:
+        user_data = entry.copy()
+        user_data.pop("embedding", None)  # remove embedding
+        users.append(user_data)
+    return JSONResponse(users)
+
+
 @app.post("/register")
 async def register_face(
     userId: str = Form(...),
@@ -97,3 +127,16 @@ async def identify_face(file: UploadFile = File(...)):
     print(f"Time taken for identification: {end - start:.2f} seconds")
 
     return JSONResponse(matched_entry)
+
+
+from fastapi.templating import Jinja2Templates
+from fastapi.responses import HTMLResponse
+from fastapi import Request
+
+# Setup Jinja2 templates directory
+templates = Jinja2Templates(directory="templates")
+
+# Route to render HTML
+@app.get("/app", response_class=HTMLResponse)
+async def serve_frontend(request: Request):
+    return templates.TemplateResponse("index.html", {"request": request})

@@ -1,0 +1,19 @@
+# This is a generated file; do not edit or check into version control.
+camera=/home/panda/.pub-cache/hosted/pub.dev/camera-0.11.1/
+camera_android_camerax=/home/panda/.pub-cache/hosted/pub.dev/camera_android_camerax-0.6.16/
+camera_avfoundation=/home/panda/.pub-cache/hosted/pub.dev/camera_avfoundation-0.9.19/
+camera_web=/home/panda/.pub-cache/hosted/pub.dev/camera_web-0.3.5/
+file_selector_linux=/home/panda/.pub-cache/hosted/pub.dev/file_selector_linux-0.9.3+2/
+file_selector_macos=/home/panda/.pub-cache/hosted/pub.dev/file_selector_macos-0.9.4+2/
+file_selector_windows=/home/panda/.pub-cache/hosted/pub.dev/file_selector_windows-0.9.3+4/
+flutter_plugin_android_lifecycle=/home/panda/.pub-cache/hosted/pub.dev/flutter_plugin_android_lifecycle-2.0.27/
+google_mlkit_commons=/home/panda/.pub-cache/hosted/pub.dev/google_mlkit_commons-0.11.0/
+google_mlkit_face_detection=/home/panda/.pub-cache/hosted/pub.dev/google_mlkit_face_detection-0.13.1/
+image_picker=/home/panda/.pub-cache/hosted/pub.dev/image_picker-1.1.2/
+image_picker_android=/home/panda/.pub-cache/hosted/pub.dev/image_picker_android-0.8.12+22/
+image_picker_for_web=/home/panda/.pub-cache/hosted/pub.dev/image_picker_for_web-3.0.6/
+image_picker_ios=/home/panda/.pub-cache/hosted/pub.dev/image_picker_ios-0.8.12+2/
+image_picker_linux=/home/panda/.pub-cache/hosted/pub.dev/image_picker_linux-0.2.1+2/
+image_picker_macos=/home/panda/.pub-cache/hosted/pub.dev/image_picker_macos-0.2.1+2/
+image_picker_windows=/home/panda/.pub-cache/hosted/pub.dev/image_picker_windows-0.2.1+1/
+mobile_scanner=/home/panda/.pub-cache/hosted/pub.dev/mobile_scanner-6.0.10/

@@ -270,3 +270,4 @@ class _faceCaptureScreenState extends State<faceCaptureScreen> {
     );
   }
 }
+

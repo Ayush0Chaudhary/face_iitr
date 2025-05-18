@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Face Identifier & Registration</title>
+  <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
+  <style>
+    body {
+      font-family: sans-serif;
+      background-color: white;
+      color: #2d3748;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 2rem;
+      min-height: 100vh;
+    }
+    input, button {
+      margin: 0.5rem;
+      padding: 0.5rem;
+    }
+    .image-preview {
+      max-width: 300px;
+      max-height: 250px;
+      border: 1px solid #ccc;
+      margin-bottom: 1rem;
+    }
+    .result-box {
+      background: #f7fafc;
+      padding: 1rem;
+      max-width: 600px;
+      border-radius: 8px;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+      margin-top: 1rem;
+      white-space: pre-wrap;
+    }
+  </style>
+</head>
+<body onpaste="handlePaste(event)">
+
+  <h1>Face Identifier & Registration</h1>
+  <p>Paste an image (Ctrl + V) or upload one to identify or register a face.</p>
+
+  <input type="file" id="imageInput" accept="image/*" onchange="handleImageSelect(event)" />
+  <br />
+  <img id="preview" class="image-preview" style="display: none;" />
+
+  <div>
+    <input type="text" id="userId" placeholder="Enter Enrollment Number" />
+    <button onclick="handleRegister()">Register Face</button>
+  </div>
+
+  <button onclick="handleIdentify()">Identify Face</button>
+
+  <div id="loading" style="display:none;">Loading...</div>
+  <div id="success" style="color:green;"></div>
+  <div id="error" style="color:red;"></div>
+  <div id="result" class="result-box"></div>
+  <div>
+    <button onclick="fetchAllUsers()">Show All Registered Users</button>
+  </div>
+  <div id="userList" class="result-box" style="display:none;"></div>
+  
+  <script>
+    let imageFile = null;
+
+    function handlePaste(e) {
+      const items = e.clipboardData.items;
+      for (let i = 0; i < items.length; i++) {
+        if (items[i].type.indexOf("image") !== -1) {
+          const blob = items[i].getAsFile();
+          imageFile = new File([blob], "pasted_image.png", { type: blob.type });
+          showImagePreview(imageFile);
+          break;
+        }
+      }
+    }
+
+    function handleImageSelect(e) {
+      imageFile = e.target.files[0];
+      showImagePreview(imageFile);
+    }
+
+    function showImagePreview(file) {
+      const preview = document.getElementById("preview");
+      preview.src = URL.createObjectURL(file);
+      preview.style.display = "block";
+    }
+
+    async function handleIdentify() {
+      if (!imageFile) return;
+
+      clearMessages();
+      toggleLoading(true);
+
+      const formData = new FormData();
+      formData.append("file", imageFile);
+
+      try {
+        const response = await axios.post("http://localhost:8000/identify", formData, {
+          headers: { "Content-Type": "multipart/form-data" },
+        });
+        document.getElementById("result").textContent = JSON.stringify(response.data, null, 2);
+      } catch (err) {
+        document.getElementById("error").textContent =
+          err.response?.data?.detail || "Identification failed";
+      } finally {
+        toggleLoading(false);
+      }
+    }
+
+    async function handleRegister() {
+      const userId = document.getElementById("userId").value;
+      if (!imageFile || !userId) {
+        document.getElementById("error").textContent = "Please provide both an image and user ID.";
+        return;
+      }
+
+      clearMessages();
+      toggleLoading(true);
+
+      const formData = new FormData();
+      formData.append("file", imageFile);
+      formData.append("userId", userId);
+
+      try {
+        const response = await axios.post("http://localhost:8000/register", formData, {
+          headers: { "Content-Type": "multipart/form-data" },
+        });
+        document.getElementById("success").textContent = response.data.message;
+      } catch (err) {
+        document.getElementById("error").textContent =
+          err.response?.data?.detail || "Registration failed";
+      } finally {
+        toggleLoading(false);
+      }
+    }
+
+    function toggleLoading(show) {
+      document.getElementById("loading").style.display = show ? "block" : "none";
+    }
+
+    function clearMessages() {
+      document.getElementById("result").textContent = "";
+      document.getElementById("error").textContent = "";
+      document.getElementById("success").textContent = "";
+    }
+    async function fetchAllUsers() {
+      clearMessages();
+      toggleLoading(true);
+      try {
+
+        const response = await axios.get("http://localhost:8000/users");
+        const users = response.data;
+        console.log(users);
+        const formatted = users.map((u, i) => 
+          `#${i + 1}
+    Enrollment: ${u.enrolment_number}
+    Name: ${u.name}
+    Phone: ${u.phone_number}
+    Email: ${u.email_id}
+    Room: ${u.bhawan}, ${u.room_number}
+    ID Key: ${u.identification_key}
+    Picture Path: ${u.display_picture_path}
+    `).join('\n\n');
+    
+        const userList = document.getElementById("userList");
+        userList.textContent = formatted;
+        userList.style.display = "block";
+      } catch (err) {
+        document.getElementById("error").textContent = "Failed to fetch user list.";
+      } finally {
+        toggleLoading(false);
+      }
+    }
+    
+  </script>
+</body>
+</html>

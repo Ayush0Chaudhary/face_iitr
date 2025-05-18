@@ -185,3 +185,53 @@ async def identify_face(file: UploadFile = File(...)):
     print(f"Time taken for identification: {end - start:.2f} seconds")
 
     return JSONResponse(matched_entry)
+
+
+@app.post("/identify")
+async def identify_face(file: UploadFile = File(...)):
+    # Load latest DB
+    start = time.time()
+    if not os.path.exists(DB_FILE):
+        raise HTTPException(status_code=400, detail="No face database available.")
+
+    db_entries = np.load(DB_FILE, allow_pickle=True).tolist()
+
+    if not db_entries:
+        raise HTTPException(status_code=400, detail="No faces registered.")
+
+    # Save query image temporarily
+    img_path = f"temp_{uuid4().hex}_{file.filename}"
+    with open(img_path, "wb") as buffer:
+        shutil.copyfileobj(file.file, buffer)
+
+    # Get embedding
+    try:
+        query_embedding = DeepFace.represent(img_path=img_path, model_name='Facenet512', )[0]["embedding"]
+    except Exception as e:
+        os.remove(img_path)
+        raise HTTPException(status_code=400, detail=f"Face embedding failed: {e}")
+
+    os.remove(img_path)
+
+    # Compute similarities
+    valid_entries = [entry for entry in db_entries if isinstance(entry.get("embedding"), (list, np.ndarray)) and len(entry["embedding"]) > 0]
+    if not valid_entries:
+        raise HTTPException(status_code=500, detail="No valid embeddings in the database.")
+    print(f"Valid entries: {len(valid_entries)}")
+
+    db_embeddings = [entry["embedding"] for entry in valid_entries]
+
+    similarities = cosine_similarity([query_embedding], db_embeddings)[0]
+    top_indices = np.argsort(similarities)[-10:][::-1]  # Get top 10 indices
+
+    top_matches = []
+    for idx in top_indices:
+        matched_entry = valid_entries[idx].copy()
+        matched_entry.pop("embedding")  # Do not send raw embedding in response
+        matched_entry["confidence"] = float(similarities[idx])
+        top_matches.append(matched_entry)
+
+    end = time.time()
+    print(f"Time taken for identification: {end - start:.2f} seconds")
+
+    return JSONResponse({"matches": top_matches, "time_taken": end - start})
