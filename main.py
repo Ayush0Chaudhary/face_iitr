@@ -30,7 +30,7 @@ embedding_dim = all_embeddings.shape[1]
 
 if not os.path.exists(FAISS_INDEX_PATH):
     # Initialize FAISS index
-    index = faiss.IndexFlatIP(embedding_dim)
+    index = faiss.IndexFlatL2(embedding_dim)
     # Add ALL embeddings at once
     index.add(all_embeddings)
     faiss.write_index(index, FAISS_INDEX_PATH)
@@ -44,29 +44,22 @@ async def register_face(
     userId: str = Form(...),
     file: UploadFile = File(...)
 ):
-    global index
-
+    global index, db_entries
+    
     # Save image
     img_path = f"face_db/{uuid4().hex}_{file.filename}"
     with open(img_path, "wb") as buffer:
         shutil.copyfileobj(file.file, buffer)
-
+    
     # Compute embedding
     try:
         embedding = DeepFace.represent(img_path=img_path, model_name='Facenet', enforce_detection=False)[0]["embedding"]
-        embedding_dim = len(embedding)
-        index = faiss.IndexFlatIP(embedding_dim)
-
-        # Add image embeddings (as numpy array)
-        index.add(embedding)
-
-        faiss.write_index(index, FAISS_INDEX_PATH)
-
-        print("Saved to FAISS Index")
+        embedding_np = np.array([embedding], dtype=np.float32)  # Convert to numpy and reshape for FAISS
     except Exception as e:
         os.remove(img_path)
         raise HTTPException(status_code=400, detail=f"Face embedding failed: {e}")
-
+    
+    # Create entry for database
     entry = {
         "embedding": embedding,
         "enrolment_number": "enrolment_number",
@@ -76,22 +69,38 @@ async def register_face(
         "bhawan": "bhawan",
         "room_number": "room_number",
         "identification_key": "identification_key",
-        "display_picture_path": "img_path"
+        "display_picture_path": img_path
     }
-
-    global db_entries
+    
+    # Update database and save
     db_entries.append(entry)
     np.save(DB_FILE, db_entries)
-
+    
+    # Update FAISS index
+    if index is None:
+        # Create new index if none exists
+        embedding_dim = len(embedding)
+        index = faiss.IndexFlatL2(embedding_dim)  # Changed to L2 for consistency
+        
+    # Add the new embedding to the index
+    index.add(embedding_np)
+    faiss.write_index(index, FAISS_INDEX_PATH)
+    print("Saved to FAISS Index")
+    
     return JSONResponse({"message": "User registered successfully", "userid": userId})
 
 @app.post("/identify")
 async def identify_face(file: UploadFile = File(...)):
     # Load latest DB
     global index
+
+    print("Inside identify")
+    print(f"File name: {file.filename}")
     start = time.time()
+    # Check if DB exists
     if not os.path.exists(DB_FILE):
         raise HTTPException(status_code=400, detail="No face database available.")
+    
 
     db_entries = np.load(DB_FILE, allow_pickle=True).tolist()
 
@@ -100,12 +109,16 @@ async def identify_face(file: UploadFile = File(...)):
 
     # Save query image temporarily
     img_path = f"temp_{uuid4().hex}_{file.filename}"
+    print(f"Image path: {img_path}")
     with open(img_path, "wb") as buffer:
         shutil.copyfileobj(file.file, buffer)
+        print(f"Writing to {img_path}")
 
     # Get embedding
     try:
-        query_embedding = np.array(DeepFace.represent(img_path=img_path, model_name='Facenet', )[0]["embedding"])
+        print(f"Computing embedding for {img_path}")
+        query_embedding = np.array(DeepFace.represent(img_path=img_path, model_name='Facenet', detector_backend="retinaface")[0]["embedding"])
+        print(f"Query embedding: {query_embedding}")
         query_embedding = np.array(query_embedding).astype('float32').reshape(1, -1) # faiss needs float32
 
     except Exception as e:
@@ -119,7 +132,8 @@ async def identify_face(file: UploadFile = File(...)):
     similarities = similarities[0]
     top_idx = top_idx[0]
 
-
+    print(f"Top indices: {top_idx}")
+    print(f"Similarities: {similarities}")
 
     matched_entries = []
     for idx in list(top_idx):
